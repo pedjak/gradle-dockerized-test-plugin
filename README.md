@@ -36,11 +36,16 @@ The plugin registers to each of test tasks `docker` extension:
 
     test {
         docker {
-            image = 'foo/testimage' // base image for creating docker containers that execute the tests
+            // base image for creating docker containers that execute the tests
+            image = 'foo/testimage' 
             
-            volumes = [ "/foo/bar": "/foo/bar"] // volumes mounted to the containers
+            // volumes mounted to the containers
+            // in a form: host_dir : container_dir
+            volumes = [ "/foo/bar": "/foo/bar"] 
             
-            user = 'root' // specify the user for starting Gradle test worker within the container, default to current user
+            // specify the user for starting Gradle test worker 
+            // within the container, default to current user
+            user = 'root' 
             
             argsInspect = { List args ->
                 // custom args processing and tweaking
