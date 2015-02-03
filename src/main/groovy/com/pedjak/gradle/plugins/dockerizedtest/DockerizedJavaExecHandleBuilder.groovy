@@ -15,6 +15,7 @@
  */
 
 package com.pedjak.gradle.plugins.dockerizedtest
+
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.process.internal.*
 import org.gradle.process.internal.streams.StreamsForwarder
@@ -49,18 +50,24 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
                     '--rm=true',
                     '-w',
                     workingDir.absolutePath] +
-                    extension.volumes.collect { p1, p2 ->
-                        ['-v', "$p1:$p2".toString()]
-                    }.flatten() +
-                    (actualEnvironment.collect { k, v ->
-                        ['-e', "$k=$v".toString()]
-                    }).flatten() + [
-                    '-i',
-                    extension.image,
-                    'java'
-                    ] + allArguments
+                extension.volumes.collect { p1, p2 ->
+                    ['-v', "$p1:$p2".toString()]
+                }.flatten() +
+                (actualEnvironment.collect { k, v ->
+                    ['-e', "$k=$v".toString()]
+                }).flatten() + [
+                '-i']
+        if (extension.user) {
+            args += ["-u", extension.user]
+        }
+        args += [extension.image,
+                 'java'
+        ] + allArguments
+        if (extension.argsInspect != null) args = extension.argsInspect(args)
+
         return new DefaultExecHandle(getDisplayName(), getWorkingDir(), 'docker', args, getActualEnvironment(),
                 effectiveHandler, listeners, redirectErrorStream, timeoutMillis, daemon);
+
     }
 
     def timeoutMillis = Integer.MAX_VALUE

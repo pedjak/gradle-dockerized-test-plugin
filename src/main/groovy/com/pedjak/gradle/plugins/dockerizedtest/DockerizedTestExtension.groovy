@@ -20,5 +20,8 @@ class DockerizedTestExtension {
 
     def image
     def volumes
+    def user
+
+    Closure argsInspect
 
 }

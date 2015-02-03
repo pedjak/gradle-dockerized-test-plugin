@@ -27,6 +27,7 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.internal.tasks.testing.detection.*
 import org.gradle.messaging.remote.internal.IncomingConnector
 import org.gradle.messaging.remote.internal.MessagingServices
+import org.apache.commons.lang3.SystemUtils
 
 import javax.inject.Inject
 
@@ -38,6 +39,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def executorFactory
     def classPathRegistry
     def resolver
+    def currentUser
 
     @Inject
     DockerizedTestPlugin(
@@ -51,12 +53,16 @@ class DockerizedTestPlugin implements Plugin<Project> {
         this.executorFactory = executorFactory
         this.classPathRegistry = classPathRegistry
         this.resolver = resolver
+        this.currentUser = SystemUtils.IS_OS_WINDOWS ? "0" : "id -u".execute().text.trim()
     }
 
     void apply(Project project) {
 
         project.tasks.withType(Test).each { test ->
-            test.extensions.create("docker", DockerizedTestExtension, [] as Object[])
+            def ext = test.extensions.create("docker", DockerizedTestExtension, [] as Object[])
+            ext.volumes = [ "$startParameter.gradleUserHomeDir": "$startParameter.gradleUserHomeDir",
+                            "$project.projectDir":"$project.projectDir"]
+            ext.user = currentUser
         }
 
         project.afterEvaluate {
