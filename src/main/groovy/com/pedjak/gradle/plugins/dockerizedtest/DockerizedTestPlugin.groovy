@@ -28,6 +28,9 @@ import org.gradle.api.internal.tasks.testing.detection.*
 import org.gradle.messaging.remote.internal.IncomingConnector
 import org.gradle.messaging.remote.internal.MessagingServices
 import org.apache.commons.lang3.SystemUtils
+import org.gradle.mvn3.org.apache.maven.artifact.versioning.ComparableVersion
+import org.gradle.process.internal.child.EncodedStream
+import org.gradle.util.GUtil
 
 import javax.inject.Inject
 
@@ -65,11 +68,20 @@ class DockerizedTestPlugin implements Plugin<Project> {
             ext.user = currentUser
         }
 
+        boolean preGradle2_4 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.4')) < 0
+        def attachStdInContent = preGradle2_4 ? { workerFactory, javaCommand ->
+            def bytes = new ByteArrayOutputStream();
+            def encoded = new EncodedStream.EncodedOutput(bytes);
+            GUtil.serialize(workerFactory.create(), encoded);
+            def stdinContent = new ByteArrayInputStream(bytes.toByteArray());
+            javaCommand.setStandardInput(stdinContent);
+        } : { workerFactory, javaCommand -> /* no-op */ }
+
         project.afterEvaluate {
             project.tasks.withType(Test).each { test ->
                 def extension = test.extensions.docker
                 if (extension.image) {
-                    test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension), actorFactory);
+                    test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, attachStdInContent), actorFactory);
                 }
             }
 
@@ -77,7 +89,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
 
     }
 
-    def newProcessBuilderFactory(extension) {
-        new DockerizedWorkerProcessFactory(startParameter.logLevel, incommingConnector, executorFactory, classPathRegistry, resolver, extension, new LongIdGenerator())
+    def newProcessBuilderFactory(extension, attachStdInContent) {
+        new DockerizedWorkerProcessFactory(startParameter.logLevel, incommingConnector, executorFactory, classPathRegistry, resolver, extension, new LongIdGenerator(), attachStdInContent)
     }
 }

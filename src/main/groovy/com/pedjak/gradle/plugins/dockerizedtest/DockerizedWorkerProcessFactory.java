@@ -16,6 +16,7 @@
 
 package com.pedjak.gradle.plugins.dockerizedtest;
 
+import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.internal.ClassPathRegistry;
 import org.gradle.api.internal.file.FileResolver;
@@ -55,10 +56,11 @@ public class DockerizedWorkerProcessFactory implements Factory<WorkerProcessBuil
     private final IdGenerator<?> idGenerator;
     private final ExecutorFactory executorFactory;
     private final DockerizedTestExtension extension;
+    private final Closure attachStdInContent;
 
     public DockerizedWorkerProcessFactory(LogLevel workerLogLevel, IncomingConnector connector, ExecutorFactory executorFactory,
                                        ClassPathRegistry classPathRegistry, FileResolver resolver, DockerizedTestExtension extension,
-                                       IdGenerator<?> idGenerator) {
+                                       IdGenerator<?> idGenerator, Closure attachStdInContent) {
         this.workerLogLevel = workerLogLevel;
         this.connector = connector;
         this.executorFactory = executorFactory;
@@ -66,6 +68,7 @@ public class DockerizedWorkerProcessFactory implements Factory<WorkerProcessBuil
         this.resolver = resolver;
         this.idGenerator = idGenerator;
         this.extension = extension;
+        this.attachStdInContent = attachStdInContent;
     }
 
     public WorkerProcessBuilder create() {
@@ -130,7 +133,7 @@ public class DockerizedWorkerProcessFactory implements Factory<WorkerProcessBuil
             LOGGER.debug("Using implementation classpath {}", implementationClassPath);
 
             JavaExecHandleBuilder javaCommand = getJavaCommand();
-            attachStdInContent(workerFactory, javaCommand);
+            attachStdInContent.call(workerFactory, javaCommand);
             workerFactory.prepareJavaCommand(javaCommand);
             javaCommand.setDisplayName(displayName);
             javaCommand.args("'" + displayName + "'");
@@ -141,12 +144,5 @@ public class DockerizedWorkerProcessFactory implements Factory<WorkerProcessBuil
             return workerProcess;
         }
 
-        private void attachStdInContent(WorkerFactory workerFactory, JavaExecHandleBuilder javaCommand) {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            OutputStream encoded = new EncodedStream.EncodedOutput(bytes);
-            GUtil.serialize(workerFactory.create(), encoded);
-            ByteArrayInputStream stdinContent = new ByteArrayInputStream(bytes.toByteArray());
-            javaCommand.setStandardInput(stdinContent);
-        }
     }
 }
