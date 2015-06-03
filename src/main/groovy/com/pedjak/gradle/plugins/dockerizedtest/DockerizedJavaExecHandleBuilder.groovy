@@ -65,8 +65,16 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
         ] + allArguments
         if (extension.argsInspect != null) args = extension.argsInspect(args)
 
-        return new DefaultExecHandle(getDisplayName(), getWorkingDir(), 'docker', args, getActualEnvironment(),
-                effectiveHandler, listeners, redirectErrorStream, timeoutMillis, daemon);
+        return new ExitCodeTolerantExecHandle(new DefaultExecHandle(getDisplayName(),
+                                                                    getWorkingDir(),
+                                                                    'docker',
+                                                                    args,
+                                                                    getActualEnvironment(),
+                                                                    effectiveHandler,
+                                                                    listeners,
+                                                                    redirectErrorStream,
+                                                                    timeoutMillis,
+                                                                    daemon))
 
     }
 
