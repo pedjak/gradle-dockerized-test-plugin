@@ -28,7 +28,7 @@ import org.gradle.api.internal.tasks.testing.detection.*
 import org.gradle.messaging.remote.internal.IncomingConnector
 import org.gradle.messaging.remote.internal.MessagingServices
 import org.apache.commons.lang3.SystemUtils
-import org.gradle.mvn3.org.apache.maven.artifact.versioning.ComparableVersion
+import org.apache.maven.artifact.versioning.ComparableVersion
 import org.gradle.process.internal.child.EncodedStream
 import org.gradle.util.GUtil
 
