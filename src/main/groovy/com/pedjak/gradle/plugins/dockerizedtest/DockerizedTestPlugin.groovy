@@ -40,7 +40,6 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def startParameter
     def incommingConnector
     def executorFactory
-    def classPathRegistry
     def resolver
     def currentUser
 
@@ -48,25 +47,30 @@ class DockerizedTestPlugin implements Plugin<Project> {
     DockerizedTestPlugin(
             StartParameter startParameter,
             ExecutorFactory executorFactory,
-            MessagingServices messagingServices,
-            ClassPathRegistry classPathRegistry, FileResolver resolver, ActorFactory actorFactory) {
+            MessagingServices messagingServices, FileResolver resolver, ActorFactory actorFactory) {
         this.actorFactory = actorFactory
         this.incommingConnector = messagingServices.get(IncomingConnector)
         this.startParameter = startParameter
         this.executorFactory = executorFactory
-        this.classPathRegistry = classPathRegistry
         this.resolver = resolver
         this.currentUser = SystemUtils.IS_OS_WINDOWS ? "0" : "id -u".execute().text.trim()
     }
 
+    void configureTest(project, test, attachStdInContent) {
+        def ext = test.extensions.create("docker", DockerizedTestExtension, [] as Object[])
+        ext.volumes = [ "$startParameter.gradleUserHomeDir": "$startParameter.gradleUserHomeDir",
+                        "$project.projectDir":"$project.projectDir"]
+        ext.user = currentUser
+        test.doFirst {
+            def extension = test.extensions.docker
+            if (extension?.image) {
+                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, attachStdInContent, test.processBuilderFactory.classPathRegistry), actorFactory);
+            }
+        }
+    }
+
     void apply(Project project) {
 
-        project.tasks.withType(Test).each { test ->
-            def ext = test.extensions.create("docker", DockerizedTestExtension, [] as Object[])
-            ext.volumes = [ "$startParameter.gradleUserHomeDir": "$startParameter.gradleUserHomeDir",
-                            "$project.projectDir":"$project.projectDir"]
-            ext.user = currentUser
-        }
 
         boolean preGradle2_4 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.4')) < 0
         def attachStdInContent = preGradle2_4 ? { workerFactory, javaCommand ->
@@ -77,19 +81,13 @@ class DockerizedTestPlugin implements Plugin<Project> {
             javaCommand.setStandardInput(stdinContent);
         } : { workerFactory, javaCommand -> /* no-op */ }
 
-        project.afterEvaluate {
-            project.tasks.withType(Test).each { test ->
-                def extension = test.extensions.docker
-                if (extension.image) {
-                    test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, attachStdInContent), actorFactory);
-                }
-            }
-
+        project.tasks.withType(Test).each { test -> configureTest(project, test, attachStdInContent) }
+        project.tasks.whenTaskAdded { task ->
+            if (task instanceof Test) configureTest(project, task, attachStdInContent)
         }
-
     }
 
-    def newProcessBuilderFactory(extension, attachStdInContent) {
+    def newProcessBuilderFactory(extension, attachStdInContent, classPathRegistry) {
         new DockerizedWorkerProcessFactory(startParameter.logLevel, incommingConnector, executorFactory, classPathRegistry, resolver, extension, new LongIdGenerator(), attachStdInContent)
     }
 }
