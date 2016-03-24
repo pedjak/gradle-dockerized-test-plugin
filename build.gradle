@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.pedjak.gradle.plugins'
-version = '0.3.4'
+version = '0.3.4-SNAPSHOT'
 
 apply plugin: 'groovy'
 apply plugin: 'idea'

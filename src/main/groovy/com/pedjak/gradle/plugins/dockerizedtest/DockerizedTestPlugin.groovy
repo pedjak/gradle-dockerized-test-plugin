@@ -64,7 +64,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
         test.doFirst {
             def extension = test.extensions.docker
             if (extension?.image) {
-                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, attachStdInContent, test.processBuilderFactory.classPathRegistry), actorFactory);
+                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, attachStdInContent, project.gradle.services.get(ClassPathRegistry)), actorFactory);
             }
         }
     }
