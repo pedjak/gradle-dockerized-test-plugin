@@ -59,15 +59,15 @@ class DockerizedTestPlugin implements Plugin<Project> {
         test.doFirst {
             def extension = test.extensions.docker
             if (extension?.image) {
-                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, test.processBuilderFactory), actorFactory);
+                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, test.processBuilderFactory), actorFactory, moduleRegistry);
             }
         }
     }
 
     void apply(Project project) {
 
-        boolean preGradle2_12 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.12')) < 0
-        if (preGradle2_12) throw new GradleException("dockerized-test plugin requires Gradle 2.12+")
+        boolean preGradle2_12 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.13')) < 0
+        if (preGradle2_12) throw new GradleException("dockerized-test plugin requires Gradle 2.13+")
 
         project.tasks.withType(Test).each { test -> configureTest(project, test) }
         project.tasks.whenTaskAdded { task ->
@@ -78,12 +78,11 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def newProcessBuilderFactory(extension, defaultProcessBuilderFactory) {
         def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, resolver)}] as ExecHandleFactory
         new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.workerLogLevel,
-                                        //defaultProcessBuilderFactory.server,
                                         messagingServer,
-                                        defaultProcessBuilderFactory.systemClassLoaderWorkerFactory.classPathRegistry,
+                                        defaultProcessBuilderFactory.workerFactory.classPathRegistry,
                                         defaultProcessBuilderFactory.idGenerator,
                                         defaultProcessBuilderFactory.gradleUserHomeDir,
-                                        defaultProcessBuilderFactory.systemClassLoaderWorkerFactory.temporaryFileProvider,
+                                        defaultProcessBuilderFactory.workerFactory.temporaryFileProvider,
                                         execHandleFactory
                                         )
     }
