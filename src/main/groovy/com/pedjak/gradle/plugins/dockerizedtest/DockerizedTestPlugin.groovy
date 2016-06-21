@@ -41,6 +41,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def resolver
     def currentUser
     def messagingServer
+    def workerSemaphore = new DefaultWorkerSemaphore()
 
     @Inject
     DockerizedTestPlugin(MessagingServer messagingServer, FileResolver resolver, ActorFactory actorFactory) {
@@ -73,10 +74,11 @@ class DockerizedTestPlugin implements Plugin<Project> {
         project.tasks.whenTaskAdded { task ->
             if (task instanceof Test) configureTest(project, task)
         }
+        workerSemaphore.applyTo(project)
     }
 
     def newProcessBuilderFactory(extension, defaultProcessBuilderFactory) {
-        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, resolver)}] as ExecHandleFactory
+        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, resolver, workerSemaphore)}] as ExecHandleFactory
         new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.workerLogLevel,
                                         messagingServer,
                                         defaultProcessBuilderFactory.workerFactory.classPathRegistry,

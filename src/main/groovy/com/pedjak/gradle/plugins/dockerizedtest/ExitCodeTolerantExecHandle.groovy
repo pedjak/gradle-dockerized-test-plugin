@@ -19,21 +19,50 @@ package com.pedjak.gradle.plugins.dockerizedtest
 import org.gradle.process.ExecResult
 import org.gradle.process.internal.ExecException
 import org.gradle.process.internal.ExecHandle
+import org.gradle.process.internal.ExecHandleListener
+
+import java.util.concurrent.Semaphore
 
 /**
  * All exit codes are normal
  */
 class ExitCodeTolerantExecHandle implements ExecHandle {
 
+    private final WorkerSemaphore testWorkerSemaphore
+
     @Delegate
     private final ExecHandle delegate
 
-    ExitCodeTolerantExecHandle(ExecHandle delegate) {
+    ExitCodeTolerantExecHandle(ExecHandle delegate, WorkerSemaphore testWorkerSemaphore) {
         this.delegate = delegate
+        this.testWorkerSemaphore = testWorkerSemaphore
+        delegate.addListener(new ExecHandleListener() {
+
+            @Override
+            void executionStarted(ExecHandle execHandle)
+            {
+
+            }
+
+            @Override
+            void executionFinished(ExecHandle execHandle, ExecResult execResult)
+            {
+                testWorkerSemaphore.release()
+            }
+        })
     }
 
     ExecResult waitForFinish() {
         new ExitCodeTolerantExecResult(delegate.waitForFinish())
+    }
+
+    ExecHandle start() {
+        testWorkerSemaphore.acquire()
+        delegate.start()
+    }
+
+    void addListener(ExecHandleListener listener) {
+        delegate.addListener(new ExecHandleListenerFacade(listener))
     }
 
     private static class ExitCodeTolerantExecResult implements ExecResult {
@@ -50,6 +79,22 @@ class ExitCodeTolerantExecHandle implements ExecHandle {
             // because Docker can complain about not being able to remove the used image
             // although the tests completed fine
             this
+        }
+    }
+
+    private static class ExecHandleListenerFacade implements ExecHandleListener {
+
+        @Delegate
+        private final ExecHandleListener delegate
+
+        ExecHandleListenerFacade(ExecHandleListener delegate)
+        {
+            this.delegate = delegate
+        }
+
+        void executionFinished(ExecHandle execHandle, ExecResult execResult)
+        {
+            delegate.executionFinished(execHandle, new ExitCodeTolerantExecResult(execResult))
         }
     }
 }

@@ -4,14 +4,19 @@ plugins {
 }
 
 group = 'com.pedjak.gradle.plugins'
-version = '0.3.6'
+version = '0.4'
 
 apply plugin: 'groovy'
+apply plugin: 'java-gradle-plugin'
 apply plugin: 'idea'
 
 dependencies {
     compile 'org.apache.commons:commons-lang3:3.3.2'
     compile 'org.apache.maven:maven-artifact:3.3.3'
+
+    testCompile ("org.spockframework:spock-core:1.0-groovy-2.4") {
+        exclude module: "groovy-all"
+    }
 }
 
 plugindev {
@@ -43,4 +48,19 @@ bintray {
     pkg.repo = "gradle-plugins"
     pkg.userOrg = "pedjak"
     pkg.attributes =  ["gradle-plugin": "${project.plugindev.pluginId}:${project.group}:${project.name}"]
+}
+
+tasks.whenTaskAdded { t ->
+    if (t.name == 'generatePomFileForPluginPublication') {
+        jar {
+            dependsOn t
+            metaInf {
+                from t.destination
+                into "maven/$project.group/$project.name"
+                rename {
+                    'pom.xml'
+                }
+            }
+        }
+    }
 }

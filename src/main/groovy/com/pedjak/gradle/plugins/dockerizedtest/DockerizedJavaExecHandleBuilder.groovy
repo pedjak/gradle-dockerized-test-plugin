@@ -17,18 +17,24 @@
 package com.pedjak.gradle.plugins.dockerizedtest
 
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.process.ExecResult
 import org.gradle.process.internal.*
 import org.gradle.process.internal.streams.StreamsForwarder
 import org.gradle.process.internal.streams.StreamsHandler
 
+import java.util.concurrent.Semaphore
+
 class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
 
     def streamsHandler
-    private DockerizedTestExtension extension
+    private final DockerizedTestExtension extension
 
-    DockerizedJavaExecHandleBuilder(DockerizedTestExtension extension, FileResolver fileResolver) {
+    private final WorkerSemaphore workersSemaphore
+
+    DockerizedJavaExecHandleBuilder(DockerizedTestExtension extension, FileResolver fileResolver, WorkerSemaphore workersSemaphore) {
         super(fileResolver)
         this.extension = extension
+        this.workersSemaphore = workersSemaphore
     }
 
     def StreamsHandler getStreamsHandler() {
@@ -74,7 +80,8 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
                                                                     listeners,
                                                                     redirectErrorStream,
                                                                     timeoutMillis,
-                                                                    daemon))
+                                                                    daemon),
+                workersSemaphore)
 
     }
 
@@ -98,4 +105,5 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
         listeners << listener
         return super.listener(listener)
     }
+
 }

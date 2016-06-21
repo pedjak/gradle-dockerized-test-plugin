@@ -1,0 +1,6 @@
+0.4
+
+* Improved test queue management over the default used by Gradle test tasks.
+  This leads to better usage of available resources and much shorter test rounds
+  when running tests in parallel (test.maxParallelForks > 1)
+  
