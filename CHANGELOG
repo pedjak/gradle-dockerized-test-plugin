@@ -1,3 +1,7 @@
+0.4.1
+
+* fixed calculation of max workers when no test tasks are executed through docker
+
 0.4
 
 * Improved test queue management over the default used by Gradle test tasks.

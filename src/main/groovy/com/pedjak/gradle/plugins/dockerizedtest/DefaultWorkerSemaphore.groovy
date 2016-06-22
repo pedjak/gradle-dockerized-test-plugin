@@ -37,7 +37,7 @@ class DefaultWorkerSemaphore implements WorkerSemaphore
                 def v = it.maxParallelForks
                 it.maxParallelForks = 10000
                 v
-            }.min()
+            }.min() ?: 1
         }
     }
 
