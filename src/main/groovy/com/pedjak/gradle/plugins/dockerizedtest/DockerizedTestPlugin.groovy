@@ -18,35 +18,30 @@ package com.pedjak.gradle.plugins.dockerizedtest
 
 import org.gradle.api.*
 import org.gradle.internal.concurrent.ExecutorFactory
-import org.gradle.messaging.actor.ActorFactory
-import org.gradle.api.internal.file.*
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.internal.tasks.testing.detection.*
-import org.gradle.messaging.remote.ConnectionAcceptor
-import org.gradle.messaging.remote.MessagingServer
-import org.gradle.messaging.remote.ObjectConnection
-import org.gradle.messaging.remote.internal.ConnectCompletion
-import org.gradle.messaging.remote.internal.IncomingConnector
+import org.gradle.internal.remote.ConnectionAcceptor
+import org.gradle.internal.remote.MessagingServer
+import org.gradle.internal.remote.ObjectConnection
+import org.gradle.internal.remote.internal.ConnectCompletion
+import org.gradle.internal.remote.internal.IncomingConnector
 import org.apache.commons.lang3.SystemUtils
 import org.apache.maven.artifact.versioning.ComparableVersion
-import org.gradle.messaging.remote.internal.hub.MessageHubBackedObjectConnection
-import org.gradle.process.internal.DefaultWorkerProcessFactory
+import org.gradle.internal.remote.internal.hub.MessageHubBackedObjectConnection
+import org.gradle.process.internal.JavaExecHandleFactory
+import org.gradle.process.internal.worker.DefaultWorkerProcessFactory
 import org.gradle.process.internal.ExecHandleFactory
 
 import javax.inject.Inject
 
 class DockerizedTestPlugin implements Plugin<Project> {
 
-    def actorFactory
-    def resolver
     def currentUser
     def messagingServer
     def workerSemaphore = new DefaultWorkerSemaphore()
 
     @Inject
-    DockerizedTestPlugin(MessagingServer messagingServer, FileResolver resolver, ActorFactory actorFactory) {
-        this.actorFactory = actorFactory
-        this.resolver = resolver
+    DockerizedTestPlugin(MessagingServer messagingServer) {
         this.currentUser = SystemUtils.IS_OS_WINDOWS ? "0" : "id -u".execute().text.trim()
         this.messagingServer = new MessageServer(messagingServer.connector, messagingServer.executorFactory)
     }
@@ -60,15 +55,15 @@ class DockerizedTestPlugin implements Plugin<Project> {
         test.doFirst {
             def extension = test.extensions.docker
             if (extension?.image) {
-                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(extension, test.processBuilderFactory), actorFactory, moduleRegistry);
+                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry);
             }
         }
     }
 
     void apply(Project project) {
 
-        boolean preGradle2_12 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.13')) < 0
-        if (preGradle2_12) throw new GradleException("dockerized-test plugin requires Gradle 2.13+")
+        boolean preGradle2_12 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.14')) < 0
+        if (preGradle2_12) throw new GradleException("dockerized-test plugin requires Gradle 2.14+")
 
         project.tasks.withType(Test).each { test -> configureTest(project, test) }
         project.tasks.whenTaskAdded { task ->
@@ -77,8 +72,9 @@ class DockerizedTestPlugin implements Plugin<Project> {
         workerSemaphore.applyTo(project)
     }
 
-    def newProcessBuilderFactory(extension, defaultProcessBuilderFactory) {
-        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, resolver, workerSemaphore)}] as ExecHandleFactory
+    def newProcessBuilderFactory(project, extension, defaultProcessBuilderFactory) {
+
+        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, project.fileResolver, workerSemaphore)}] as JavaExecHandleFactory
         new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.workerLogLevel,
                                         messagingServer,
                                         defaultProcessBuilderFactory.workerFactory.classPathRegistry,
