@@ -1,3 +1,13 @@
+0.5
+
+* use docker-java client instead local docker cli for communication with Docker host
+* added beforeContainerCreate, afterContainerCreate, beforeContainerStart, afterContainerStart, afterContainerStop
+  interceptors that enable hooking/customizing the testing process
+* removed support for inspectArgs closure, use beforeContainerCreate closure instead
+* a custom client can be specified via client property of the docker extension. The property can point to a DockerClient
+  instance, or to a closure that is invoked before a test worker container. This opens up the possibility to run
+  tests in a cluster, applying custom scheduling mechanism.
+
 0.4.2
 
 * Gradle 2.14 support

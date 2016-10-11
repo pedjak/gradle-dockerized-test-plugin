@@ -41,7 +41,7 @@ class ExitCodeTolerantExecHandle implements ExecHandle {
             @Override
             void executionStarted(ExecHandle execHandle)
             {
-
+                // do nothing
             }
 
             @Override
@@ -52,17 +52,15 @@ class ExitCodeTolerantExecHandle implements ExecHandle {
         })
     }
 
-    ExecResult waitForFinish() {
-        new ExitCodeTolerantExecResult(delegate.waitForFinish())
-    }
-
     ExecHandle start() {
         testWorkerSemaphore.acquire()
-        delegate.start()
-    }
-
-    void addListener(ExecHandleListener listener) {
-        delegate.addListener(new ExecHandleListenerFacade(listener))
+        try
+        {
+            delegate.start()
+        } catch (Exception e) {
+            testWorkerSemaphore.release()
+            throw e
+        }
     }
 
     private static class ExitCodeTolerantExecResult implements ExecResult {

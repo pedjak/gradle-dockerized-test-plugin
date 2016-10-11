@@ -18,10 +18,26 @@ package com.pedjak.gradle.plugins.dockerizedtest
 
 class DockerizedTestExtension {
 
-    def image
-    def volumes
-    def user
+    String image
+    Map volumes
+    String user
 
-    Closure argsInspect
+    Closure beforeContainerCreate
 
+    Closure afterContainerCreate
+
+    Closure beforeContainerStart
+
+    Closure afterContainerStart
+
+    Closure afterContainerStop = { containerId, client ->
+        try
+        {
+            client.removeContainerCmd(containerId).exec();
+        } catch (Exception e) {
+            // ignore any error
+        }
+    }
+
+    def client
 }

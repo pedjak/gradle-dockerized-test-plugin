@@ -16,6 +16,10 @@
 
 package com.pedjak.gradle.plugins.dockerizedtest
 
+import com.github.dockerjava.api.DockerClient
+import com.github.dockerjava.core.DefaultDockerClientConfig
+import com.github.dockerjava.core.DockerClientBuilder
+import com.github.dockerjava.netty.NettyDockerCmdExecFactory
 import org.gradle.api.*
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.api.tasks.testing.Test
@@ -54,10 +58,26 @@ class DockerizedTestPlugin implements Plugin<Project> {
         ext.user = currentUser
         test.doFirst {
             def extension = test.extensions.docker
-            if (extension?.image) {
+
+            if (extension?.image)
+            {
+
+                workerSemaphore.applyTo(test.project)
                 test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry);
+
+                if (!extension.client)
+                {
+                    extension.client = createDefaultClient()
+                }
             }
+
         }
+    }
+
+    DockerClient createDefaultClient() {
+        DockerClientBuilder.getInstance(DefaultDockerClientConfig.createDefaultConfigBuilder())
+                    .withDockerCmdExecFactory(new NettyDockerCmdExecFactory())
+                    .build()
     }
 
     void apply(Project project) {
@@ -69,7 +89,6 @@ class DockerizedTestPlugin implements Plugin<Project> {
         project.tasks.whenTaskAdded { task ->
             if (task instanceof Test) configureTest(project, task)
         }
-        workerSemaphore.applyTo(project)
     }
 
     def newProcessBuilderFactory(project, extension, defaultProcessBuilderFactory) {

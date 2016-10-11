@@ -17,12 +17,9 @@
 package com.pedjak.gradle.plugins.dockerizedtest
 
 import org.gradle.api.internal.file.FileResolver
-import org.gradle.process.ExecResult
 import org.gradle.process.internal.*
 import org.gradle.process.internal.streams.StreamsForwarder
 import org.gradle.process.internal.streams.StreamsHandler
-
-import java.util.concurrent.Semaphore
 
 class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
 
@@ -50,33 +47,12 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
 
     ExecHandle build() {
 
-        def userHome = System.properties['user.home']
-        StreamsHandler effectiveHandler = getStreamsHandler();
-        def args = ['run',
-                    '--rm=true',
-                    '-w',
-                    workingDir.absolutePath] +
-                extension.volumes.collect { p1, p2 ->
-                    ['-v', "$p1:$p2".toString()]
-                }.flatten() +
-                (actualEnvironment.collect { k, v ->
-                    ['-e', "$k=$v".toString()]
-                }).flatten() + [
-                '-i']
-        if (extension.user) {
-            args += ["-u", extension.user]
-        }
-        args += [extension.image,
-                 'java'
-        ] + allArguments
-        if (extension.argsInspect != null) args = extension.argsInspect(args)
-
-        return new ExitCodeTolerantExecHandle(new DefaultExecHandle(getDisplayName(),
+        return new ExitCodeTolerantExecHandle(new DockerizedExecHandle(extension, getDisplayName(),
                                                                     getWorkingDir(),
-                                                                    'docker',
-                                                                    args,
+                                                                    'java',
+                                                                    allArguments,
                                                                     getActualEnvironment(),
-                                                                    effectiveHandler,
+                                                                    getStreamsHandler(),
                                                                     listeners,
                                                                     redirectErrorStream,
                                                                     timeoutMillis,
