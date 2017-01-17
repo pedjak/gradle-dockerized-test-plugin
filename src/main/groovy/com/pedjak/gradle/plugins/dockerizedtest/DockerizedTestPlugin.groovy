@@ -23,7 +23,9 @@ import com.github.dockerjava.netty.NettyDockerCmdExecFactory
 import org.gradle.api.*
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.api.tasks.testing.Test
-import org.gradle.api.internal.tasks.testing.detection.*
+import org.gradle.internal.progress.BuildOperationExecutor
+import org.gradle.internal.operations.BuildOperationWorkerRegistry
+import org.gradle.internal.remote.Address
 import org.gradle.internal.remote.ConnectionAcceptor
 import org.gradle.internal.remote.MessagingServer
 import org.gradle.internal.remote.ObjectConnection
@@ -32,17 +34,19 @@ import org.gradle.internal.remote.internal.IncomingConnector
 import org.apache.commons.lang3.SystemUtils
 import org.apache.maven.artifact.versioning.ComparableVersion
 import org.gradle.internal.remote.internal.hub.MessageHubBackedObjectConnection
+import org.gradle.internal.remote.internal.inet.MultiChoiceAddress
 import org.gradle.process.internal.JavaExecHandleFactory
 import org.gradle.process.internal.worker.DefaultWorkerProcessFactory
-import org.gradle.process.internal.ExecHandleFactory
 
 import javax.inject.Inject
 
 class DockerizedTestPlugin implements Plugin<Project> {
 
+    def supportedVersion = '3.4'
     def currentUser
     def messagingServer
     def workerSemaphore = new DefaultWorkerSemaphore()
+    def memoryManager = new NoMemoryManager()
 
     @Inject
     DockerizedTestPlugin(MessagingServer messagingServer) {
@@ -63,7 +67,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
             {
 
                 workerSemaphore.applyTo(test.project)
-                test.testExecuter = new DefaultTestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry);
+                test.testExecuter = new TestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry, services.get(BuildOperationWorkerRegistry), services.get(BuildOperationExecutor));
 
                 if (!extension.client)
                 {
@@ -82,8 +86,8 @@ class DockerizedTestPlugin implements Plugin<Project> {
 
     void apply(Project project) {
 
-        boolean preGradle2_12 = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion('2.14')) < 0
-        if (preGradle2_12) throw new GradleException("dockerized-test plugin requires Gradle 2.14+")
+        boolean unsupportedVersion = new ComparableVersion(project.gradle.gradleVersion).compareTo(new ComparableVersion(supportedVersion)) < 0
+        if (unsupportedVersion) throw new GradleException("dockerized-test plugin requires Gradle ${supportedVersion}+")
 
         project.tasks.withType(Test).each { test -> configureTest(project, test) }
         project.tasks.whenTaskAdded { task ->
@@ -100,7 +104,10 @@ class DockerizedTestPlugin implements Plugin<Project> {
                                         defaultProcessBuilderFactory.idGenerator,
                                         defaultProcessBuilderFactory.gradleUserHomeDir,
                                         defaultProcessBuilderFactory.workerFactory.temporaryFileProvider,
-                                        execHandleFactory
+                                        execHandleFactory,
+                                        defaultProcessBuilderFactory.workerFactory.jvmVersionDetector,
+                                        defaultProcessBuilderFactory.outputEventListener,
+                                        memoryManager
                                         )
     }
 
@@ -114,7 +121,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
         }
 
         public ConnectionAcceptor accept(Action<ObjectConnection> action) {
-            return this.connector.accept(new ConnectEventAction(action, executorFactory), true);
+            return new ConnectionAcceptorDelegate(connector.accept(new ConnectEventAction(action, executorFactory), true))
         }
 
 
@@ -131,6 +138,31 @@ class DockerizedTestPlugin implements Plugin<Project> {
 
         public void execute(ConnectCompletion completion) {
             action.execute(new MessageHubBackedObjectConnection(executorFactory, completion));
+        }
+    }
+
+    class ConnectionAcceptorDelegate implements ConnectionAcceptor {
+
+        MultiChoiceAddress address
+
+        @Delegate
+        ConnectionAcceptor delegate
+
+        ConnectionAcceptorDelegate(ConnectionAcceptor delegate) {
+            this.delegate = delegate
+        }
+
+        Address getAddress() {
+            synchronized (delegate)
+            {
+                if (address == null)
+                {
+                    def remoteAddresses = NetworkInterface.networkInterfaces.findAll { it.up && !it.loopback }*.inetAddresses*.collect { it }.flatten()
+                    def original = delegate.address
+                    address = new MultiChoiceAddress(original.canonicalAddress, original.port, remoteAddresses)
+                }
+            }
+            address
         }
     }
 

@@ -523,7 +523,7 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
                     .exec(attachContainerResultCallback);
         }
 
-        @Override public OutputStream getOutputStream()
+            @Override public OutputStream getOutputStream()
         {
             return stdInWriteStream;
         }

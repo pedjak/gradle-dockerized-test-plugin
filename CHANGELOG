@@ -1,3 +1,7 @@
+0.5.1
+
+* Gradle 3.4 support
+
 0.5
 
 * use docker-java client instead local docker cli for communication with Docker host
