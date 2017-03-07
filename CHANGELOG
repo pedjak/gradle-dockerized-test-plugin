@@ -1,3 +1,9 @@
+0.5.2
+
+* When forcing test-worker JVM exit, print message on the standard error instead logging it.
+  Perform Runtime.halt() from a daemon thread, so that it happens only if the regular
+  shutdown process gets stuck.
+
 0.5.1
 
 * Gradle 3.4 support

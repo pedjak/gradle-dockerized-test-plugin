@@ -12,8 +12,7 @@ import org.gradle.api.internal.tasks.testing.worker.TestWorker;
 
 public class ForciblyStoppableTestWorker extends TestWorker
 {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ForciblyStoppableTestWorker.class);
-    private static final int SHUTDOWN_TIMEOUT = 60;
+    private static final int SHUTDOWN_TIMEOUT = 60; // secs
 
     public ForciblyStoppableTestWorker(WorkerTestClassProcessorFactory factory)
     {
@@ -22,11 +21,11 @@ public class ForciblyStoppableTestWorker extends TestWorker
 
     @Override public void stop()
     {
-        new Timer().schedule(new TimerTask()
+        new Timer(true).schedule(new TimerTask()
         {
             @Override public void run()
             {
-                LOGGER.warn("Worker process did not shutdown gracefully within {}s, forcing it now", SHUTDOWN_TIMEOUT);
+                System.err.println("Worker process did not shutdown gracefully within "+SHUTDOWN_TIMEOUT+"s, forcing it now");
                 Runtime.getRuntime().halt(-100);
             }
         }, TimeUnit.SECONDS.toMillis(SHUTDOWN_TIMEOUT));
