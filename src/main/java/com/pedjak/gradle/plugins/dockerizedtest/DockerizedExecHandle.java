@@ -515,15 +515,15 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         }
 
         private void attachStreams() throws Exception {
-
             dockerClient.attachContainerCmd(containerId)
                     .withFollowStream(true)
                     .withStdOut(true)
+                    .withStdErr(true)
                     .withStdIn(stdInReadStream)
                     .exec(attachContainerResultCallback);
         }
 
-            @Override public OutputStream getOutputStream()
+        @Override public OutputStream getOutputStream()
         {
             return stdInWriteStream;
         }

@@ -42,7 +42,7 @@ import javax.inject.Inject
 
 class DockerizedTestPlugin implements Plugin<Project> {
 
-    def supportedVersion = '3.4'
+    def supportedVersion = '3.5'
     def currentUser
     def messagingServer
     def workerSemaphore = new DefaultWorkerSemaphore()
