@@ -1,3 +1,12 @@
+0.5.4
+
+* in a multiproject build, when running tests tasks in parallel, the number of test worker
+  at any time must not be higher than the max allowed
+
+0.5.3
+
+* Gradle 3.5 support
+
 0.5.2
 
 * When forcing test-worker JVM exit, print message on the standard error instead logging it.

@@ -45,7 +45,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def supportedVersion = '3.5'
     def currentUser
     def messagingServer
-    def workerSemaphore = new DefaultWorkerSemaphore()
+    def static workerSemaphore = new DefaultWorkerSemaphore()
     def memoryManager = new NoMemoryManager()
 
     @Inject
