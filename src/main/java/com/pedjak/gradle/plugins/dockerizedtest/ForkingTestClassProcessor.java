@@ -90,7 +90,7 @@ public class ForkingTestClassProcessor implements TestClassProcessor
 
     List<URL> getTestWorkerImplementationClasspath() {
         return CollectionUtils.flattenCollections(URL.class,
-                moduleRegistry.getModule("gradle-version-info").getImplementationClasspath().getAsURLs(),
+                moduleRegistry.getModule("gradle-core-api").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getModule("gradle-core").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getModule("gradle-logging").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getModule("gradle-messaging").getImplementationClasspath().getAsURLs(),
@@ -100,7 +100,6 @@ public class ForkingTestClassProcessor implements TestClassProcessor
                 moduleRegistry.getModule("gradle-testing-base").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getModule("gradle-testing-jvm").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getModule("gradle-process-services").getImplementationClasspath().getAsURLs(),
-                moduleRegistry.getExternalModule("guava-jdk5").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getExternalModule("slf4j-api").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getExternalModule("jul-to-slf4j").getImplementationClasspath().getAsURLs(),
                 moduleRegistry.getExternalModule("native-platform").getImplementationClasspath().getAsURLs(),

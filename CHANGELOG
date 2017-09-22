@@ -1,3 +1,7 @@
+0.5.5
+
+* Gradle 4.2 support
+
 0.5.4
 
 * in a multiproject build, when running tests tasks in parallel, the number of test worker

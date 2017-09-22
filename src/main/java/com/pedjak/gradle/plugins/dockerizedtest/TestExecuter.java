@@ -19,33 +19,31 @@ import org.gradle.api.internal.tasks.testing.processors.RestartEveryNTestClassPr
 import org.gradle.api.internal.tasks.testing.processors.TestMainAction;
 import org.gradle.api.tasks.testing.Test;
 import org.gradle.internal.Factory;
-import org.gradle.internal.time.TrueTimeProvider;
+import org.gradle.internal.time.Clock;
 import org.gradle.internal.actor.ActorFactory;
-import org.gradle.internal.progress.BuildOperationExecutor;
+import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.process.internal.worker.WorkerProcessFactory;
-import org.gradle.internal.operations.BuildOperationWorkerRegistry;
 
 public class TestExecuter implements org.gradle.api.internal.tasks.testing.detection.TestExecuter
 {
     private final WorkerProcessFactory workerFactory;
     private final ActorFactory actorFactory;
     private final ModuleRegistry moduleRegistry;
-    private final BuildOperationWorkerRegistry buildOperationWorkerRegistry;
     private final BuildOperationExecutor buildOperationExecutor;
+    private final Clock clock;
 
-    public TestExecuter(WorkerProcessFactory workerFactory, ActorFactory actorFactory, ModuleRegistry moduleRegistry, BuildOperationWorkerRegistry buildOperationWorkerRegistry, BuildOperationExecutor buildOperationExecutor) {
+    public TestExecuter(WorkerProcessFactory workerFactory, ActorFactory actorFactory, ModuleRegistry moduleRegistry, BuildOperationExecutor buildOperationExecutor, Clock clock) {
         this.workerFactory = workerFactory;
         this.actorFactory = actorFactory;
         this.moduleRegistry = moduleRegistry;
-        this.buildOperationWorkerRegistry = buildOperationWorkerRegistry;
         this.buildOperationExecutor = buildOperationExecutor;
+        this.clock = clock;
     }
 
     @Override
     public void execute(final Test testTask, TestResultProcessor testResultProcessor) {
         final TestFramework testFramework = testTask.getTestFramework();
         final WorkerTestClassProcessorFactory testInstanceFactory = testFramework.getProcessorFactory();
-        BuildOperationWorkerRegistry.Completion currentOperationCompletition = null;
         final Set<File> classpath = ImmutableSet.copyOf(testTask.getClasspath());
         final Factory<TestClassProcessor> forkingProcessorFactory = new Factory<TestClassProcessor>() {
             public TestClassProcessor create() {
@@ -67,7 +65,7 @@ public class TestExecuter implements org.gradle.api.internal.tasks.testing.detec
         Runnable detector;
         if (testTask.isScanForTestClasses()) {
             TestFrameworkDetector testFrameworkDetector = testTask.getTestFramework().getDetector();
-            testFrameworkDetector.setTestClassesDirectory(testTask.getTestClassesDir());
+            testFrameworkDetector.setTestClasses(testTask.getTestClassesDirs().getFiles());
             testFrameworkDetector.setTestClasspath(classpath);
             detector = new DefaultTestClassScanner(testClassFiles, testFrameworkDetector, processor);
         } else {
@@ -78,11 +76,11 @@ public class TestExecuter implements org.gradle.api.internal.tasks.testing.detec
 
         try
         {
-            testTaskOperationId = buildOperationExecutor.getCurrentOperation().getId();
+            testTaskOperationId = buildOperationExecutor.getCurrentOperation().getParentId();
         } catch (Exception e) {
             testTaskOperationId = UUID.randomUUID();
         }
 
-        new TestMainAction(detector, processor, testResultProcessor, new TrueTimeProvider(), testTaskOperationId, testTask.getPath(), "Gradle Test Run " + testTask.getIdentityPath()).run();
+        new TestMainAction(detector, processor, testResultProcessor, clock, testTaskOperationId, testTask.getPath(), "Gradle Test Run " + testTask.getIdentityPath()).run();
     }
 }

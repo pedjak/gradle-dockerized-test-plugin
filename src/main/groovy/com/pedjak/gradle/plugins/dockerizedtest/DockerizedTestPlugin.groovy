@@ -23,8 +23,7 @@ import com.github.dockerjava.netty.NettyDockerCmdExecFactory
 import org.gradle.api.*
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.api.tasks.testing.Test
-import org.gradle.internal.progress.BuildOperationExecutor
-import org.gradle.internal.operations.BuildOperationWorkerRegistry
+import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.remote.Address
 import org.gradle.internal.remote.ConnectionAcceptor
 import org.gradle.internal.remote.MessagingServer
@@ -35,6 +34,7 @@ import org.apache.commons.lang3.SystemUtils
 import org.apache.maven.artifact.versioning.ComparableVersion
 import org.gradle.internal.remote.internal.hub.MessageHubBackedObjectConnection
 import org.gradle.internal.remote.internal.inet.MultiChoiceAddress
+import org.gradle.internal.time.Clock
 import org.gradle.process.internal.JavaExecHandleFactory
 import org.gradle.process.internal.worker.DefaultWorkerProcessFactory
 
@@ -42,7 +42,7 @@ import javax.inject.Inject
 
 class DockerizedTestPlugin implements Plugin<Project> {
 
-    def supportedVersion = '3.5'
+    def supportedVersion = '4.2'
     def currentUser
     def messagingServer
     def static workerSemaphore = new DefaultWorkerSemaphore()
@@ -67,7 +67,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
             {
 
                 workerSemaphore.applyTo(test.project)
-                test.testExecuter = new TestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry, services.get(BuildOperationWorkerRegistry), services.get(BuildOperationExecutor));
+                test.testExecuter = new TestExecuter(newProcessBuilderFactory(project, extension, test.processBuilderFactory), actorFactory, moduleRegistry, services.get(BuildOperationExecutor), services.get(Clock));
 
                 if (!extension.client)
                 {
@@ -98,14 +98,14 @@ class DockerizedTestPlugin implements Plugin<Project> {
     def newProcessBuilderFactory(project, extension, defaultProcessBuilderFactory) {
 
         def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, project.fileResolver, workerSemaphore)}] as JavaExecHandleFactory
-        new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.workerLogLevel,
+        new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.loggingManager,
                                         messagingServer,
-                                        defaultProcessBuilderFactory.workerFactory.classPathRegistry,
+                                        defaultProcessBuilderFactory.workerImplementationFactory.classPathRegistry,
                                         defaultProcessBuilderFactory.idGenerator,
                                         defaultProcessBuilderFactory.gradleUserHomeDir,
-                                        defaultProcessBuilderFactory.workerFactory.temporaryFileProvider,
+                                        defaultProcessBuilderFactory.workerImplementationFactory.temporaryFileProvider,
                                         execHandleFactory,
-                                        defaultProcessBuilderFactory.workerFactory.jvmVersionDetector,
+                                        defaultProcessBuilderFactory.workerImplementationFactory.jvmVersionDetector,
                                         defaultProcessBuilderFactory.outputEventListener,
                                         memoryManager
                                         )

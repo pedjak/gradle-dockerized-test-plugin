@@ -16,13 +16,7 @@
 
 package com.pedjak.gradle.plugins.dockerizedtest;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import com.google.common.base.Joiner;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
@@ -32,27 +26,62 @@ import com.github.dockerjava.core.command.WaitContainerResultCallback;
 import groovy.lang.Closure;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
-import org.gradle.internal.concurrent.StoppableExecutor;
+import org.gradle.internal.concurrent.ManagedExecutor;
 import org.gradle.internal.event.ListenerBroadcast;
+import org.gradle.internal.nativeintegration.services.NativeServices;
+import org.gradle.internal.operations.BuildOperationIdentifierPreservingRunnable;
 import org.gradle.process.ExecResult;
 import org.gradle.process.internal.*;
 import org.gradle.process.internal.shutdown.ShutdownHookActionRegister;
 import org.gradle.process.internal.streams.StreamsHandler;
 
+import javax.annotation.Nullable;
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static java.lang.String.format;
+
+/**
+ * Default implementation for the ExecHandle interface.
+ *
+ * <h3>State flows</h3>
+ *
+ * <ul>
+ *   <li>INIT -> STARTED -> [SUCCEEDED|FAILED|ABORTED|DETACHED]</li>
+ *   <li>INIT -> FAILED</li>
+ *   <li>INIT -> STARTED -> DETACHED -> ABORTED</li>
+ * </ul>
+ *
+ * State is controlled on all control methods:
+ * <ul>
+ * <li>{@link #start()} allowed when state is INIT</li>
+ * <li>{@link #abort()} allowed when state is STARTED or DETACHED</li>
+ * </ul>
+ */
 public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 {
+
     private static final Logger LOGGER = Logging.getLogger(DockerizedExecHandle.class);
 
     private final String displayName;
+
     /**
      * The working directory of the process.
      */
     private final File directory;
+
     /**
      * The executable to run.
      */
     private final String command;
+
     /**
      * Arguments to pass to the executable.
      */
@@ -65,7 +94,6 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
     private final StreamsHandler streamsHandler;
     private final boolean redirectErrorStream;
     private final DefaultExecutorFactory executorFactory = new DefaultExecutorFactory();
-    private final StoppableExecutor executor;
     private int timeoutMillis;
     private boolean daemon;
 
@@ -73,8 +101,9 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
      * Lock to guard all mutable state
      */
     private final Lock lock;
+    private final Condition stateChanged;
 
-    private final Condition condition;
+    private final ManagedExecutor executor;
 
     /**
      * State of this ExecHandle.
@@ -94,9 +123,9 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 
     private final DockerizedTestExtension testExtension;
 
-    public DockerizedExecHandle(DockerizedTestExtension extension, String displayName, File directory, String command, List<String> arguments,
-            Map<String, String> environment, StreamsHandler streamsHandler,
-            List<ExecHandleListener> listeners, boolean redirectErrorStream, int timeoutMillis, boolean daemon) {
+    public DockerizedExecHandle(DockerizedTestExtension testExtension, String displayName, File directory, String command, List<String> arguments,
+                      Map<String, String> environment, StreamsHandler streamsHandler,
+                      List<ExecHandleListener> listeners, boolean redirectErrorStream, int timeoutMillis, boolean daemon) {
         this.displayName = displayName;
         this.directory = directory;
         this.command = command;
@@ -107,10 +136,10 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         this.timeoutMillis = timeoutMillis;
         this.daemon = daemon;
         this.lock = new ReentrantLock();
-        this.condition = lock.newCondition();
+        this.stateChanged = lock.newCondition();
         this.state = ExecHandleState.INIT;
-        this.testExtension = extension;
-        executor = executorFactory.create(String.format("Run %s", displayName));
+        this.testExtension = testExtension;
+        executor = executorFactory.create(format("Run %s", displayName));
         shutdownHookAction = new ExecHandleShutdownHookAction(this);
         broadcast = new ListenerBroadcast<ExecHandleListener>(ExecHandleListener.class);
         broadcast.addAll(listeners);
@@ -155,7 +184,7 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         try {
             LOGGER.debug("Changing state to: {}", state);
             this.state = state;
-            this.condition.signalAll();
+            this.stateChanged.signalAll();
         } finally {
             lock.unlock();
         }
@@ -173,24 +202,17 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
     private void setEndStateInfo(ExecHandleState newState, int exitValue, Throwable failureCause) {
         ShutdownHookActionRegister.removeAction(shutdownHookAction);
 
-        ExecResultImpl result;
         ExecHandleState currentState;
         lock.lock();
         try {
             currentState = this.state;
-            ExecException wrappedException = null;
-            if (failureCause != null) {
-                if (currentState == ExecHandleState.STARTING) {
-                    wrappedException = new ExecException(String.format("A problem occurred starting process '%s'",
-                            displayName), failureCause);
-                } else {
-                    wrappedException = new ExecException(String.format(
-                            "A problem occurred waiting for process '%s' to complete.", displayName), failureCause);
-                }
-            }
             setState(newState);
-            execResult = new ExecResultImpl(exitValue, wrappedException, displayName);
-            result = execResult;
+            ExecResultImpl newResult = new ExecResultImpl(exitValue, execExceptionFor(failureCause, currentState), displayName);
+            if (execResult != null) {
+                String message = "Attempted to overwrite exec result: " + execResult + " -> " + newResult;
+                throw execExceptionFor(new RuntimeException(message), currentState);
+            }
+            this.execResult = newResult;
         } finally {
             lock.unlock();
         }
@@ -198,9 +220,154 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         LOGGER.debug("Process '{}' finished with exit value {} (state: {})", displayName, exitValue, newState);
 
         if (currentState != ExecHandleState.DETACHED && newState != ExecHandleState.DETACHED) {
-            broadcast.getSource().executionFinished(this, result);
+            broadcast.getSource().executionFinished(this, execResult);
         }
         executor.requestStop();
+    }
+
+    @Nullable
+    private ExecException execExceptionFor(Throwable failureCause, ExecHandleState currentState) {
+        return failureCause != null
+            ? new ExecException(failureMessageFor(currentState), failureCause)
+            : null;
+    }
+
+    private String failureMessageFor(ExecHandleState currentState) {
+        return currentState == ExecHandleState.STARTING
+            ? format("A problem occurred starting process '%s'", displayName)
+            : format("A problem occurred waiting for process '%s' to complete.", displayName);
+    }
+
+    public ExecHandle start() {
+        LOGGER.info("Starting process '{}'. Working directory: {} Command: {}",
+                displayName, directory, command + ' ' + Joiner.on(' ').useForNull("null").join(arguments));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Environment for process '{}': {}", displayName, environment);
+        }
+        lock.lock();
+        try {
+            if (!stateIn(ExecHandleState.INIT)) {
+                throw new IllegalStateException(format("Cannot start process '%s' because it has already been started", displayName));
+            }
+            setState(ExecHandleState.STARTING);
+
+            execHandleRunner = new DockerizedExecHandleRunner(this, streamsHandler, runContainer(), executorFactory);
+            executor.execute(new BuildOperationIdentifierPreservingRunnable(execHandleRunner));
+
+            while (stateIn(ExecHandleState.STARTING)) {
+                LOGGER.debug("Waiting until process started: {}.", displayName);
+                try {
+                    stateChanged.await();
+                } catch (InterruptedException e) {
+                    //ok, wrapping up
+                }
+            }
+
+            if (execResult != null) {
+                execResult.rethrowFailure();
+            }
+
+            LOGGER.info("Successfully started process '{}'", displayName);
+        } finally {
+            lock.unlock();
+        }
+        return this;
+    }
+
+    public void abort() {
+        lock.lock();
+        try {
+            if (stateIn(ExecHandleState.SUCCEEDED, ExecHandleState.FAILED, ExecHandleState.ABORTED)) {
+                return;
+            }
+            if (!stateIn(ExecHandleState.STARTED, ExecHandleState.DETACHED)) {
+                throw new IllegalStateException(
+                    format("Cannot abort process '%s' because it is not in started or detached state", displayName));
+            }
+            this.execHandleRunner.abortProcess();
+            this.waitForFinish();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public ExecResult waitForFinish() {
+        lock.lock();
+        try {
+            while (!stateIn(ExecHandleState.SUCCEEDED, ExecHandleState.ABORTED, ExecHandleState.FAILED, ExecHandleState.DETACHED)) {
+                try {
+                    stateChanged.await();
+                } catch (InterruptedException e) {
+                    //ok, wrapping up...
+                    throw UncheckedException.throwAsUncheckedException(e);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        executor.stop();
+
+        return result();
+    }
+
+    private ExecResult result() {
+        lock.lock();
+        try {
+            return execResult.rethrowFailure();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    void detached() {
+        setEndStateInfo(ExecHandleState.DETACHED, 0, null);
+    }
+
+    void started() {
+        ShutdownHookActionRegister.addAction(shutdownHookAction);
+        setState(ExecHandleState.STARTED);
+        broadcast.getSource().executionStarted(this);
+    }
+
+    void finished(int exitCode) {
+        if (exitCode != 0) {
+            setEndStateInfo(ExecHandleState.FAILED, exitCode, null);
+        } else {
+            setEndStateInfo(ExecHandleState.SUCCEEDED, 0, null);
+        }
+    }
+
+    void aborted(int exitCode) {
+        if (exitCode == 0) {
+            // This can happen on Windows
+            exitCode = -1;
+        }
+        setEndStateInfo(ExecHandleState.ABORTED, exitCode, null);
+    }
+
+    void failed(Throwable failureCause) {
+        setEndStateInfo(ExecHandleState.FAILED, -1, failureCause);
+    }
+
+    public void addListener(ExecHandleListener listener) {
+        broadcast.add(listener);
+    }
+
+    public void removeListener(ExecHandleListener listener) {
+        broadcast.remove(listener);
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public boolean getRedirectErrorStream() {
+        return redirectErrorStream;
+    }
+
+    public int getTimeout() {
+        return timeoutMillis;
     }
 
     private DockerClient getClient() {
@@ -288,143 +455,13 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         }
         cmd.withVolumes(volumes).withBinds(binds);
     }
-    public ExecHandle start() {
-//        LOGGER.info("Starting process '{}'. Working directory: {} Command: {}",
-//                displayName, directory, command + ' ' + Joiner.on(' ').useForNull("null").join(arguments));
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Environment for process '{}': {}", displayName, environment);
-        }
-        lock.lock();
-        try {
-            if (!stateIn(ExecHandleState.INIT)) {
-                throw new IllegalStateException(String.format("Cannot start process '%s' because it has already been started", displayName));
-            }
-            setState(ExecHandleState.STARTING);
-
-            execHandleRunner = new DockerizedExecHandleRunner(this, streamsHandler, runContainer(), executorFactory);
-            executor.execute(execHandleRunner);
-
-            while(stateIn(ExecHandleState.STARTING)) {
-                LOGGER.debug("Waiting until process started: {}.", displayName);
-                try {
-                    condition.await();
-                } catch (InterruptedException e) {
-                    //ok, wrapping up
-                }
-            }
-
-            if (execResult != null) {
-                execResult.rethrowFailure();
-            }
-
-            LOGGER.info("Successfully started process '{}'", displayName);
-        } finally {
-            lock.unlock();
-        }
-        return this;
-    }
-
-    public void abort() {
-        lock.lock();
-        try {
-            if (state == ExecHandleState.SUCCEEDED || state == ExecHandleState.FAILED || state == ExecHandleState.ABORTED) {
-                return;
-            }
-            if (!stateIn(ExecHandleState.STARTED, ExecHandleState.DETACHED)) {
-                throw new IllegalStateException(String.format("Cannot abort process '%s' because it is not in started or detached state", displayName));
-            }
-            this.execHandleRunner.abortProcess();
-            this.waitForFinish();
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public ExecResult waitForFinish() {
-        lock.lock();
-        try {
-            while (!stateIn(ExecHandleState.SUCCEEDED, ExecHandleState.ABORTED, ExecHandleState.FAILED, ExecHandleState.DETACHED)) {
-                try {
-                    condition.await();
-                } catch (InterruptedException e) {
-                    //ok, wrapping up...
-                }
-            }
-        } finally {
-            lock.unlock();
-        }
-
-        executor.stop();
-
-        return result();
-    }
-
-    private ExecResult result() {
-        lock.lock();
-        try {
-            execResult.rethrowFailure();
-            return execResult;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    void detached() {
-        setEndStateInfo(ExecHandleState.DETACHED, 0, null);
-    }
-
-    void started() {
-        ShutdownHookActionRegister.addAction(shutdownHookAction);
-        setState(ExecHandleState.STARTED);
-        broadcast.getSource().executionStarted(this);
-    }
-
-    void finished(int exitCode) {
-        if (exitCode != 0) {
-            setEndStateInfo(ExecHandleState.FAILED, exitCode, null);
-        } else {
-            setEndStateInfo(ExecHandleState.SUCCEEDED, 0, null);
-        }
-    }
-
-    void aborted(int exitCode) {
-        if (exitCode == 0) {
-            // This can happen on Windows
-            exitCode = -1;
-        }
-        setEndStateInfo(ExecHandleState.ABORTED, exitCode, null);
-    }
-
-    void failed(Throwable failureCause) {
-        setEndStateInfo(ExecHandleState.FAILED, -1, failureCause);
-    }
-
-    public void addListener(ExecHandleListener listener) {
-        broadcast.add(listener);
-    }
-
-    public void removeListener(ExecHandleListener listener) {
-        broadcast.remove(listener);
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public boolean getRedirectErrorStream() {
-        return redirectErrorStream;
-    }
-
-    public int getTimeout() {
-        return timeoutMillis;
-    }
 
     private static class ExecResultImpl implements ExecResult {
         private final int exitValue;
         private final ExecException failure;
         private final String displayName;
 
-        public ExecResultImpl(int exitValue, ExecException failure, String displayName) {
+        ExecResultImpl(int exitValue, ExecException failure, String displayName) {
             this.exitValue = exitValue;
             this.failure = failure;
             this.displayName = displayName;
@@ -436,6 +473,9 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 
         public ExecResult assertNormalExitValue() throws ExecException {
             // all exit values are ok
+//            if (exitValue != 0) {
+//                throw new ExecException(format("Process '%s' finished with non-zero exit value %d", displayName, exitValue));
+//            }
             return this;
         }
 
@@ -555,4 +595,5 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
             dockerClient.killContainerCmd(containerId).exec();
         }
     }
+
 }
