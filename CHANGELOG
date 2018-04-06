@@ -1,3 +1,9 @@
+0.5.6
+
+* invoke afterContainerStop clojure before informing Gradle test framework that the container has stopped
+* do not wait indefinitely for container to start, set timeout to 30sec
+* do not wait indefinitely to attach to container's stdin and stdout, set timeout to 30sec
+
 0.5.5
 
 * Gradle 4.2 support

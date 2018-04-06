@@ -34,12 +34,11 @@ public class DockerizedExecHandleRunner implements Runnable {
     private final Lock lock = new ReentrantLock();
     private final ExecutorFactory executorFactory;
 
-    private final Process process;
+    private Process process;
     private boolean aborted;
     private final StreamsHandler streamsHandler;
 
-    public DockerizedExecHandleRunner(DockerizedExecHandle execHandle, StreamsHandler streamsHandler, Process process, ExecutorFactory executorFactory) {
-        this.process = process;
+    public DockerizedExecHandleRunner(DockerizedExecHandle execHandle, StreamsHandler streamsHandler, ExecutorFactory executorFactory) {
         this.executorFactory = executorFactory;
         if (execHandle == null) {
             throw new IllegalArgumentException("execHandle == null!");
@@ -63,6 +62,7 @@ public class DockerizedExecHandleRunner implements Runnable {
 
     public void run() {
         try {
+            process = execHandle.runContainer();
             streamsHandler.connectStreams(process, execHandle.getDisplayName(), executorFactory);
 
             execHandle.started();
@@ -92,6 +92,10 @@ public class DockerizedExecHandleRunner implements Runnable {
 
     private void detached() {
         execHandle.detached();
+    }
+
+    public String toString() {
+        return "Handler for "+process.toString();
     }
 }
 
