@@ -17,20 +17,26 @@
 package com.pedjak.gradle.plugins.dockerizedtest
 
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.initialization.BuildCancellationToken
 import org.gradle.process.internal.*
-import org.gradle.process.internal.streams.StreamsForwarder
-import org.gradle.process.internal.streams.StreamsHandler
+import org.gradle.process.internal.streams.OutputStreamsForwarder
+
+import java.util.concurrent.Executor
 
 class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
 
     def streamsHandler
+    def executor
+    def buildCancellationToken
     private final DockerizedTestExtension extension
 
     private final WorkerSemaphore workersSemaphore
 
-    DockerizedJavaExecHandleBuilder(DockerizedTestExtension extension, FileResolver fileResolver, WorkerSemaphore workersSemaphore) {
-        super(fileResolver)
+    DockerizedJavaExecHandleBuilder(DockerizedTestExtension extension, FileResolver fileResolver, Executor executor, BuildCancellationToken buildCancellationToken, WorkerSemaphore workersSemaphore) {
+        super(fileResolver, executor, buildCancellationToken)
         this.extension = extension
+        this.executor = executor
+        this.buildCancellationToken = buildCancellationToken
         this.workersSemaphore = workersSemaphore
     }
 
@@ -40,7 +46,7 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
             effectiveHandler = this.streamsHandler;
         } else {
             boolean shouldReadErrorStream = !redirectErrorStream;
-            effectiveHandler = new StreamsForwarder(standardOutput, errorOutput, standardInput, shouldReadErrorStream);
+            effectiveHandler = new OutputStreamsForwarder(standardOutput, errorOutput, shouldReadErrorStream);
         }
         return effectiveHandler;
     }
@@ -53,10 +59,13 @@ class DockerizedJavaExecHandleBuilder extends JavaExecHandleBuilder {
                                                                     allArguments,
                                                                     getActualEnvironment(),
                                                                     getStreamsHandler(),
+                                                                    inputHandler,
                                                                     listeners,
                                                                     redirectErrorStream,
                                                                     timeoutMillis,
-                                                                    daemon),
+                                                                    daemon,
+                                                                    executor,
+                                                                    buildCancellationToken),
                 workersSemaphore)
 
     }

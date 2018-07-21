@@ -21,6 +21,8 @@ import com.github.dockerjava.core.DefaultDockerClientConfig
 import com.github.dockerjava.core.DockerClientBuilder
 import com.github.dockerjava.netty.NettyDockerCmdExecFactory
 import org.gradle.api.*
+import org.gradle.initialization.DefaultBuildCancellationToken
+import org.gradle.internal.concurrent.DefaultExecutorFactory
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.api.tasks.testing.Test
 import org.gradle.internal.operations.BuildOperationExecutor;
@@ -42,7 +44,7 @@ import javax.inject.Inject
 
 class DockerizedTestPlugin implements Plugin<Project> {
 
-    def supportedVersion = '4.2'
+    def supportedVersion = '4.8'
     def currentUser
     def messagingServer
     def static workerSemaphore = new DefaultWorkerSemaphore()
@@ -97,7 +99,11 @@ class DockerizedTestPlugin implements Plugin<Project> {
 
     def newProcessBuilderFactory(project, extension, defaultProcessBuilderFactory) {
 
-        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, project.fileResolver, workerSemaphore)}] as JavaExecHandleFactory
+        def executorFactory = new DefaultExecutorFactory()
+        def executor = executorFactory.create("Docker container link")
+        def buildCancellationToken = new DefaultBuildCancellationToken()
+
+        def execHandleFactory = [newJavaExec: { -> new DockerizedJavaExecHandleBuilder(extension, project.fileResolver, executor, buildCancellationToken, workerSemaphore)}] as JavaExecHandleFactory
         new DefaultWorkerProcessFactory(defaultProcessBuilderFactory.loggingManager,
                                         messagingServer,
                                         defaultProcessBuilderFactory.workerImplementationFactory.classPathRegistry,

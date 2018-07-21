@@ -16,30 +16,28 @@
 
 package com.pedjak.gradle.plugins.dockerizedtest;
 
+import java.util.concurrent.Executor;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import net.rubygrapefruit.platform.ProcessLauncher;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.concurrent.ExecutorFactory;
-import org.gradle.process.internal.ProcessBuilderFactory;
-import org.gradle.process.internal.streams.StreamsHandler;
-
+import org.gradle.process.internal.StreamsHandler;
 
 public class DockerizedExecHandleRunner implements Runnable {
     private static final Logger LOGGER = Logging.getLogger(org.gradle.process.internal.ExecHandleRunner.class);
 
     private final DockerizedExecHandle execHandle;
     private final Lock lock = new ReentrantLock();
-    private final ExecutorFactory executorFactory;
+    private final Executor executor;
 
     private Process process;
     private boolean aborted;
     private final StreamsHandler streamsHandler;
 
-    public DockerizedExecHandleRunner(DockerizedExecHandle execHandle, StreamsHandler streamsHandler, ExecutorFactory executorFactory) {
-        this.executorFactory = executorFactory;
+    public DockerizedExecHandleRunner(DockerizedExecHandle execHandle, StreamsHandler streamsHandler, Executor executor) {
+        this.executor = executor;
         if (execHandle == null) {
             throw new IllegalArgumentException("execHandle == null!");
         }
@@ -63,7 +61,7 @@ public class DockerizedExecHandleRunner implements Runnable {
     public void run() {
         try {
             process = execHandle.runContainer();
-            streamsHandler.connectStreams(process, execHandle.getDisplayName(), executorFactory);
+            streamsHandler.connectStreams(process, execHandle.getDisplayName(), executor);
 
             execHandle.started();
 
