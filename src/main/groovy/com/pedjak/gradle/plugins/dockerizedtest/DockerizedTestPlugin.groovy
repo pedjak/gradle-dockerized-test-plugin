@@ -111,7 +111,7 @@ class DockerizedTestPlugin implements Plugin<Project> {
                                         defaultProcessBuilderFactory.gradleUserHomeDir,
                                         defaultProcessBuilderFactory.workerImplementationFactory.temporaryFileProvider,
                                         execHandleFactory,
-                                        defaultProcessBuilderFactory.workerImplementationFactory.jvmVersionDetector,
+                                        new DockerizedJvmVersionDetector(extension),
                                         defaultProcessBuilderFactory.outputEventListener,
                                         memoryManager
                                         )

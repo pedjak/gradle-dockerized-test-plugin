@@ -16,6 +16,8 @@
 
 package com.pedjak.gradle.plugins.dockerizedtest
 
+import com.github.dockerjava.api.DockerClient
+
 class DockerizedTestExtension {
 
     String image
@@ -39,5 +41,19 @@ class DockerizedTestExtension {
         }
     }
 
-    def client
+    // could be a DockerClient instance or a closure that returns a DockerClient instance
+    private def clientOrClosure
+
+    void setClient(clientOrClosure) {
+        this.clientOrClosure = clientOrClosure
+    }
+
+    DockerClient getClient() {
+        if (clientOrClosure == null) return null
+        if (DockerClient.class.isAssignableFrom(clientOrClosure.getClass())) {
+            return (DockerClient) clientOrClosure;
+        } else {
+            return (DockerClient) ((Closure) clientOrClosure).call();
+        }
+    }
 }

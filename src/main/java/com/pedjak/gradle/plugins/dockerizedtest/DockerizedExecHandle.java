@@ -386,20 +386,10 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         return timeoutMillis;
     }
 
-    private DockerClient getClient() {
-        Object clientOrClosure = testExtension.getClient();
-        if (DockerClient.class.isAssignableFrom(clientOrClosure.getClass())) {
-            return (DockerClient) clientOrClosure;
-        } else {
-            return (DockerClient) ((Closure) clientOrClosure).call();
-        }
-
-    }
-
     public Process runContainer() {
         try
         {
-            DockerClient client = getClient();
+            DockerClient client = testExtension.getClient();
             CreateContainerCmd createCmd = client.createContainerCmd(testExtension.getImage().toString())
                     .withTty(false)
                     .withStdinOpen(true)
