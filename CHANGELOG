@@ -1,3 +1,8 @@
+0.5.7
+
+* Gradle 4.8 support
+* added logic to correctly detect the Java version available in the test images
+
 0.5.6
 
 * invoke afterContainerStop clojure before informing Gradle test framework that the container has stopped
