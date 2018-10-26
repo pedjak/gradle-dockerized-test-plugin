@@ -23,6 +23,7 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.command.AttachContainerResultCallback;
 import com.github.dockerjava.core.command.WaitContainerResultCallback;
+import com.github.dockerjava.core.util.CompressArchiveUtil;
 import groovy.lang.Closure;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
@@ -386,6 +387,37 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
         return timeoutMillis;
     }
 
+    private void maybeCopyJvmOptionFile(String containerId, DockerClient client) throws Exception {
+        for (String arg: arguments) {
+            if (arg.startsWith("@")) {
+                File optionFile = new File(arg.substring(1));
+                if (optionFile.isFile()) {
+                    boolean copyingDone = false;
+                    File tar = CompressArchiveUtil.archiveTARFiles(new File("/"), Arrays.asList(optionFile), optionFile.getName());
+                    for (int i = 0; i < 10; i++)
+                    {
+                        try
+                        {
+                            client.copyArchiveToContainerCmd(containerId)
+                                    .withRemotePath("/")
+                                    .withTarInputStream(new FileInputStream(tar))
+                                    .exec();
+                            copyingDone = true;
+                            tar.delete();
+                            break;
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed copying option file {} via tar {} to container {}", optionFile, tar, containerId, e);
+
+                        }
+                    }
+                    if (!copyingDone) {
+                        throw new IOException(String.format("Error copying option file %s to container %s", optionFile, containerId));
+                    }
+                }
+            }
+        }
+    }
+
     public Process runContainer() {
         try
         {
@@ -409,7 +441,10 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 
             invokeIfNotNull(testExtension.getBeforeContainerCreate(), createCmd, client);
             String containerId = createCmd.exec().getId();
+
             invokeIfNotNull(testExtension.getAfterContainerCreate(), containerId, client);
+
+            maybeCopyJvmOptionFile(containerId, client);
 
             invokeIfNotNull(testExtension.getBeforeContainerStart(), containerId, client);
             client.startContainerCmd(containerId).exec();
