@@ -1,3 +1,12 @@
+0.5.9
+
+* allow Gradle to generate test reports even when a test class processing failed
+  due to failure at test worker start. Those tes classes are reported in the report as failed
+
+0.5.8
+
+* Java9+ support
+
 0.5.7
 
 * Gradle 4.8 support
