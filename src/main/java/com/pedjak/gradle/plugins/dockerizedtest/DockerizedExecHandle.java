@@ -396,18 +396,23 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
                     File tar = CompressArchiveUtil.archiveTARFiles(new File("/"), Arrays.asList(optionFile), optionFile.getName());
                     for (int i = 0; i < 10; i++)
                     {
+                        FileInputStream tarInputStream = null;
                         try
                         {
+                            tarInputStream = new FileInputStream(tar);
                             client.copyArchiveToContainerCmd(containerId)
                                     .withRemotePath("/")
-                                    .withTarInputStream(new FileInputStream(tar))
+                                    .withTarInputStream(tarInputStream)
                                     .exec();
                             copyingDone = true;
                             tar.delete();
                             break;
                         } catch (Exception e) {
                             LOGGER.warn("Failed copying option file {} via tar {} to container {}", optionFile, tar, containerId, e);
-
+                        } finally {
+                            if (tarInputStream != null) {
+                                tarInputStream.close();
+                            }
                         }
                     }
                     if (!copyingDone) {
@@ -458,7 +463,7 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 
             return proc;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Failed to create container " + displayName, new RuntimeException(e));
             throw new RuntimeException(e);
         }
     }
@@ -627,6 +632,7 @@ public class DockerizedExecHandle implements ExecHandle, ProcessSettings
 
         private void attachStreams() throws Exception {
             dockerClient.attachContainerCmd(containerId)
+                    .withLogs(true)
                     .withFollowStream(true)
                     .withStdOut(true)
                     .withStdErr(true)
