@@ -47,7 +47,7 @@ public class ForkingTestClassProcessor implements TestClassProcessor
     public void processTestClass(TestClassRunInfo testClass) {
         int i = 0;
         RuntimeException exception = null;
-        while (remoteProcessor == null && i < 10)
+        while (remoteProcessor == null && i < 20)
         {
             try
             {
@@ -59,6 +59,11 @@ public class ForkingTestClassProcessor implements TestClassProcessor
             {
                 exception = e;
                 i++;
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }
 

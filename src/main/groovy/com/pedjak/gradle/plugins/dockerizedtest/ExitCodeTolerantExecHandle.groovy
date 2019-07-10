@@ -21,8 +21,6 @@ import org.gradle.process.internal.ExecException
 import org.gradle.process.internal.ExecHandle
 import org.gradle.process.internal.ExecHandleListener
 
-import java.util.concurrent.Semaphore
-
 /**
  * All exit codes are normal
  */
@@ -33,32 +31,44 @@ class ExitCodeTolerantExecHandle implements ExecHandle {
     @Delegate
     private final ExecHandle delegate
 
+    private boolean needsReleasing = false
+
     ExitCodeTolerantExecHandle(ExecHandle delegate, WorkerSemaphore testWorkerSemaphore) {
         this.delegate = delegate
         this.testWorkerSemaphore = testWorkerSemaphore
         delegate.addListener(new ExecHandleListener() {
 
             @Override
-            void executionStarted(ExecHandle execHandle)
-            {
+            void executionStarted(ExecHandle execHandle) {
                 // do nothing
             }
 
             @Override
-            void executionFinished(ExecHandle execHandle, ExecResult execResult)
-            {
-                testWorkerSemaphore.release()
+            void executionFinished(ExecHandle execHandle, ExecResult execResult) {
+                synchronized (delegate) {
+                    if (needsReleasing) {
+                        testWorkerSemaphore.release()
+                        needsReleasing = false
+                    }
+                }
             }
         })
     }
 
     ExecHandle start() {
-        testWorkerSemaphore.acquire()
-        try
-        {
+        synchronized(delegate) {
+            testWorkerSemaphore.acquire()
+            needsReleasing = true
+        }
+        try {
             delegate.start()
         } catch (Exception e) {
-            testWorkerSemaphore.release()
+            synchronized (delegate) {
+                if (needsReleasing) {
+                    testWorkerSemaphore.release()
+                    needsReleasing = false
+                }
+            }
             throw e
         }
     }
@@ -85,13 +95,11 @@ class ExitCodeTolerantExecHandle implements ExecHandle {
         @Delegate
         private final ExecHandleListener delegate
 
-        ExecHandleListenerFacade(ExecHandleListener delegate)
-        {
+        ExecHandleListenerFacade(ExecHandleListener delegate) {
             this.delegate = delegate
         }
 
-        void executionFinished(ExecHandle execHandle, ExecResult execResult)
-        {
+        void executionFinished(ExecHandle execHandle, ExecResult execResult) {
             delegate.executionFinished(execHandle, new ExitCodeTolerantExecResult(execResult))
         }
     }
