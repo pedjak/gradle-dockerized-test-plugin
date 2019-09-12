@@ -59,7 +59,7 @@ public class TestExecuter implements org.gradle.api.internal.tasks.testing.TestE
         final FileTree testClassFiles = testExecutionSpec.getCandidateClassFiles();
 
         Runnable detector;
-        if (testExecutionSpec.isScanForTestClasses()) {
+        if (testExecutionSpec.isScanForTestClasses() && testFramework.getDetector() != null) {
             TestFrameworkDetector testFrameworkDetector = testExecutionSpec.getTestFramework().getDetector();
             testFrameworkDetector.setTestClasses(testExecutionSpec.getTestClassesDirs().getFiles());
             testFrameworkDetector.setTestClasspath(classpath);
